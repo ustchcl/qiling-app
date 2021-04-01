@@ -1,6 +1,7 @@
 'use strict'
 
-import { app, protocol, BrowserWindow } from 'electron'
+import { app, protocol, BrowserWindow, ipcMain, Menu, Tray } from 'electron'
+import path from 'path'
 import { createProtocol } from 'vue-cli-plugin-electron-builder/lib'
 import installExtension, { VUEJS_DEVTOOLS } from 'electron-devtools-installer'
 const isDevelopment = process.env.NODE_ENV !== 'production'
@@ -11,10 +12,13 @@ protocol.registerSchemesAsPrivileged([
 ])
 
 async function createWindow() {
+  console.log(__dirname + '/icon.png')
   // Create the browser window.
   const win = new BrowserWindow({
     width: 800,
     height: 600,
+    icon: __dirname + '/icon.png',
+    // frame: false,
     webPreferences: {
       
       // Use pluginOptions.nodeIntegration, leave this alone
@@ -42,6 +46,8 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()
   }
+
+  appIcon && appIcon.destroy()
 })
 
 app.on('activate', () => {
@@ -64,6 +70,29 @@ app.on('ready', async () => {
   }
   createWindow()
 })
+
+let appIcon: Tray | null = null;
+ipcMain.on('put-in-tray', (event) => {
+  const iconName = process.platform === 'win32' ? 'windows-icon.png' : 'iconTemplate.png'
+  const iconPath = path.join(__dirname, iconName)
+  
+  appIcon = new Tray(iconPath)
+
+  const contextMenu = Menu.buildFromTemplate([{
+    label: "Remove",
+    click() {
+      event.sender.send('tray-removed')
+    }
+  }])
+
+  appIcon.setToolTip('Electron Demo in the tray')
+  appIcon.setContextMenu(contextMenu)
+})
+
+ipcMain.on('remove-tray', () => {
+  appIcon && appIcon.destroy()
+})
+
 
 // Exit cleanly on request from parent process in development mode.
 if (isDevelopment) {

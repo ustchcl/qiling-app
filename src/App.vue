@@ -38,24 +38,50 @@
     </v-app-bar>
 
     <v-main>
-      <HelloWorld/>
+      <!-- <HelloWorld/> -->
+      <!-- <v-btn elevation="2" @click="putInTray"> put to tray </v-btn>
+      <hello-world/> -->
+      <img :src="imgSrc">
+      <v-img 
+        :src="imgSrc"
+        max-height="400"
+        max-width="160"
+      ></v-img>
     </v-main>
   </v-app>
 </template>
 
 <script lang="ts">
 import Vue from 'vue';
-import HelloWorld from './components/HelloWorld.vue';
+import { ipcRenderer } from 'electron'
+import { getImageList } from "@/resources"
+import path from "path"
 
 export default Vue.extend({
   name: 'App',
 
-  components: {
-    HelloWorld,
-  },
 
   data: () => ({
-    //
+    trayOn: false,
+    imgSrc: ''
   }),
+
+  mounted() {
+    const imgList = getImageList()
+    this.imgSrc = path.resolve(__dirname, `../static/qiling_imgs/${imgList[Math.floor(Math.random() * imgList.length)]}`)
+    console.log(this.imgSrc)
+  },
+
+  methods: {
+    putInTray() {
+      if (this.trayOn) {
+        this.trayOn = false
+        ipcRenderer.send('remove-tray')
+      } else {
+        this.trayOn = true
+        ipcRenderer.send('put-in-tray')
+      }
+    }
+  }
 });
 </script>
