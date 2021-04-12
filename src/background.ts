@@ -1,42 +1,81 @@
 'use strict'
 
-import { app, protocol, BrowserWindow, ipcMain, Menu, Tray } from 'electron'
+import { app, protocol, BrowserWindow, ipcMain, Menu, Tray, screen, globalShortcut } from 'electron'
 import path from 'path'
 import { createProtocol } from 'vue-cli-plugin-electron-builder/lib'
 import installExtension, { VUEJS_DEVTOOLS } from 'electron-devtools-installer'
+import Storage from './Storage'
+import Timer from "./Timer"
+
 const isDevelopment = process.env.NODE_ENV !== 'production'
+
+const store = new Storage({
+  configName: 'user-preferences',
+  defaults: {
+    time: -1,
+    yiyan: "随机",
+    userDefinedText: "",
+    autoStart: false,
+  }
+})
+
+let renderEvent: any = null;
+ipcMain.on("viewer-ready", (event: any) => {
+  renderEvent = event;
+})
+
+const showWindow = () => {
+  renderEvent && renderEvent.reply('random')
+  window && window.show()
+}
+
+const timer = new Timer(store.get("time"), showWindow)
+
 
 // Scheme must be registered before the app is ready
 protocol.registerSchemesAsPrivileged([
   { scheme: 'app', privileges: { secure: true, standard: true } }
 ])
 
+
+let window: BrowserWindow | null = null;
+
 async function createWindow() {
-  console.log(__dirname + '/icon.png')
+  const { width, height } = screen.getAllDisplays()[0].size
   // Create the browser window.
-  const win = new BrowserWindow({
-    width: 800,
+  window = new BrowserWindow({
+    x: width - 410,
+    y: height - 640,
+    width: 400,
     height: 600,
+    frame: false,
+
+    // parent: top, 
+    modal: true,
     icon: __dirname + '/icon.png',
-    // frame: false,
+    simpleFullscreen: false,
+    alwaysOnTop: true,
     webPreferences: {
-      
-      // Use pluginOptions.nodeIntegration, leave this alone
-      // See nklayman.github.io/vue-cli-plugin-electron-builder/guide/security.html#node-integration for more info
-      nodeIntegration: (process.env
-          .ELECTRON_NODE_INTEGRATION as unknown) as boolean
+      // devTools: false,
+      nodeIntegration: true
     }
   })
 
+  const query = `?time=${store.get("time")}&yiyan=${store.get("yiyan")}&userDefinedText=${store.get("userDefinedText")}`
+
   if (process.env.WEBPACK_DEV_SERVER_URL) {
     // Load the url of the dev server if in development mode
-    await win.loadURL(process.env.WEBPACK_DEV_SERVER_URL as string)
-    if (!process.env.IS_TEST) win.webContents.openDevTools()
+    await window.loadURL(process.env.WEBPACK_DEV_SERVER_URL as string + "/#/viewer" + query)
+    if (!process.env.IS_TEST) window.webContents.openDevTools()
   } else {
     createProtocol('app')
     // Load the index.html when not in development
-    win.loadURL('app://./index.html')
+    window.loadURL('app://./index.html#/viewer' + query)
   }
+
+  window.hide()
+
+  ipcMain.emit("put-in-tray")
 }
 
 // Quit when all windows are closed.
@@ -47,7 +86,7 @@ app.on('window-all-closed', () => {
     app.quit()
   }
 
-  appIcon && appIcon.destroy()
+  // appIcon && appIcon.destroy()
 })
 
 app.on('activate', () => {
@@ -69,23 +108,49 @@ app.on('ready', async () => {
     }
   }
   createWindow()
+  globalShortcut.register("Alt+F1", () => {
+    renderEvent && renderEvent.reply('show-by-hand')
+    window && window.show()
+  })
 })
 
 let appIcon: Tray | null = null;
 ipcMain.on('put-in-tray', (event) => {
-  const iconName = process.platform === 'win32' ? 'windows-icon.png' : 'iconTemplate.png'
-  const iconPath = path.join(__dirname, iconName)
-  
-  appIcon = new Tray(iconPath)
+  const trayIcnPath = process.env.WEBPACK_DEV_SERVER_URL  
+    ? path.join(__dirname, `../public/img/tray.png`)
+    : path.join(__dirname, `../app.asar/img/tray.png`);
 
-  const contextMenu = Menu.buildFromTemplate([{
-    label: "Remove",
-    click() {
-      event.sender.send('tray-removed')
-    }
-  }])
 
-  appIcon.setToolTip('Electron Demo in the tray')
+  appIcon = new Tray(trayIcnPath)
+
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: "显示 (Alt+F1 快捷键)",
+      click() {
+        renderEvent && renderEvent.reply('show-by-hand')
+        window && window.show()
+      }
+    },
+    {
+      label: "设置",
+      click() {
+        showSettingPanel()
+      },
+    }, {
+      label: "关闭",
+      click() {
+        window && window.destroy()
+        appIcon && appIcon.destroy()
+        settingWindow && settingWindow.destroy()
+
+        if (process.platform !== 'darwin') {
+          app.quit()
+        }
+      }
+    },
+  ])
+
+  appIcon.setToolTip('郭麒麟鼓励师v1.0')
   appIcon.setContextMenu(contextMenu)
 })
 
@@ -108,3 +173,64 @@ if (isDevelopment) {
     })
   }
 }
+
+
+let settingWindow: BrowserWindow | null = null
+
+async function showSettingPanel() {
+  settingWindow = new BrowserWindow({
+    width: 800,
+    height: 550,
+    modal: true,
+    icon: __dirname + '/icon.png',
+    frame: false,
+    // simpleFullscreen: false,
+    // alwaysOnTop: true,
+
+    webPreferences: {
+      // devTools: false,
+      nodeIntegration: true
+    }
+  })
+
+  const query = `?time=${store.get("time")}&yiyan=${store.get("yiyan")}&userDefinedText=${store.get("userDefinedText")}&autoStart=${store.get("autoStart")}`
+
+  if (process.env.WEBPACK_DEV_SERVER_URL) {
+    // Load the url of the dev server if in development mode
+    await settingWindow.loadURL((process.env.WEBPACK_DEV_SERVER_URL as string) + "/#/setting" + query)
+    if (!process.env.IS_TEST) settingWindow.webContents.openDevTools()
+  } else {
+    createProtocol('app')
+    // Load the index.html when not in development
+    await settingWindow.loadURL('app://./index.html#/setting' + query)
+  }
+}
+
+ipcMain.on("close-setting", (event: any) => {
+  settingWindow && settingWindow.destroy()
+})
+
+const exePath = process.execPath;
+
+ipcMain.on('save-setting', (event: any, time, yiyan, userDefinedText, autoStart) => {
+  store.set("time", time)
+    .set("yiyan", yiyan)
+    .set("userDefinedText", userDefinedText)
+    .set("autoStart", !!autoStart)
+    .save()
+
+  app.setLoginItemSettings({
+    openAtLogin: !!autoStart,
+    path: exePath,
+    args: []
+  })
+
+  timer.restart(time, showWindow)
+  renderEvent && renderEvent.reply("new-setting", yiyan, userDefinedText)
+  settingWindow && settingWindow.destroy()
+})
+
+
+ipcMain.on("hide-viewer", (event: any) => {
+  window && window.hide()
+})

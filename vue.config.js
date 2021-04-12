@@ -4,7 +4,17 @@ module.exports = {
   ],
   pluginOptions: {
     electronBuilder: {
-      nodeIntegration: true
+      nodeIntegration: true,
+      chainWebpackRendererProcess(config) {
+        config.plugins.delete('workbox')
+        config.plugins.delete('pwa')
+      },
+      builderOptions: {
+        "win": {
+          "icon": "dist_electron/bigIcon.png"
+        }, 
+        "productName": "郭麒麟鼓励师"
+      }
     }
   }
 }
